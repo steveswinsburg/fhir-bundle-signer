@@ -1,0 +1,19 @@
+{
+  "name": "bundle-signer",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "cli.js",
+  "bin": {
+    "bundle-signer": "./cli.js"
+  },
+  "scripts": {
+    "start": "node cli.js"
+  },
+  "dependencies": {
+    "commander": "^11.0.0",
+    "diff": "^8.0.2",
+    "jose": "^5.10.0",
+    "json-stable-stringify": "^1.0.1",
+    "xml2js": "^0.6.2"
+  }
+}
