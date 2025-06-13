@@ -1,6 +1,7 @@
 import { readBundle, writeBundle, updateSignature } from './utils/bundle.js';
 import { loadPrivateKey, saveKeyPair } from './utils/keys.js';
 import { canonicalize } from './utils/canonical.js';
+import { base64UrlToBase64 } from './utils/encoding.js';
 import { SignJWT, generateKeyPair } from 'jose';
 
 export async function sign({ bundle: bundlePath, key: keyPath, out: outPath, xml }) {
@@ -27,7 +28,7 @@ export async function sign({ bundle: bundlePath, key: keyPath, out: outPath, xml
 
   // Step 4: Embed signature in the bundle
   updateSignature(bundle, {
-    signature,
+    signature: base64UrlToBase64(signature),
     targetFormat: xml ? 'application/fhir+xml' : 'application/fhir+json',
     sigFormat: 'application/jose',
     whoRef: 'Practitioner/123'

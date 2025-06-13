@@ -2,6 +2,7 @@ import { readBundle } from './utils/bundle.js';
 import { loadPublicKey } from './utils/keys.js';
 import { canonicalize } from './utils/canonical.js';
 import { getSignatureData } from './utils/signature.js';
+import { base64ToBase64Url } from './utils/encoding.js';
 import { jwtVerify } from 'jose';
 import { diffLines } from 'diff';
 
@@ -9,8 +10,8 @@ export async function verify({ bundle: bundlePath, key: keyPath, xml }) {
   // Load the bundle
   const bundle = await readBundle(bundlePath, xml);
 
-  // Extract the embedded JWS signature
-  const signatureJWS = getSignatureData(bundle);
+  // Extract the embedded JWS signature 
+  const signatureJWS = base64ToBase64Url(getSignatureData(bundle));
 
   // Load the public key
   const publicKey = await loadPublicKey(keyPath);
