@@ -1,8 +1,8 @@
 import { readBundle, writeBundle, updateSignature } from './utils/bundle.js';
 import { loadPrivateKey, saveKeyPair } from './utils/keys.js';
 import { canonicalize } from './utils/canonical.js';
-import { base64UrlToBase64 } from './utils/encoding.js';
 import { SignJWT, generateKeyPair } from 'jose';
+import { toBase64 } from './utils/encoding.js';
 
 export async function sign({ bundle: bundlePath, key: keyPath, out: outPath, xml }) {
   // Step 1: Load and canonicalize the bundle
@@ -22,13 +22,15 @@ export async function sign({ bundle: bundlePath, key: keyPath, out: outPath, xml
   }
 
   // Step 3: Sign using JWS (RS256)
-  const signature = await new SignJWT(JSON.parse(canonical))
+  const jwsCompact = await new SignJWT(JSON.parse(canonical))
     .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
     .sign(privateKey);
 
+  const signatureData = toBase64(jwsCompact);
+
   // Step 4: Embed signature in the bundle
   updateSignature(bundle, {
-    signature: base64UrlToBase64(signature),
+    signature: signatureData,
     targetFormat: xml ? 'application/fhir+xml' : 'application/fhir+json',
     sigFormat: 'application/jose',
     whoRef: 'Practitioner/123'

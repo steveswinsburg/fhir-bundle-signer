@@ -2,7 +2,7 @@ import { readBundle } from './utils/bundle.js';
 import { loadPublicKey } from './utils/keys.js';
 import { canonicalize } from './utils/canonical.js';
 import { getSignatureData } from './utils/signature.js';
-import { base64ToBase64Url } from './utils/encoding.js';
+import { fromBase64 } from './utils/encoding.js';
 import { jwtVerify } from 'jose';
 import { diffLines } from 'diff';
 
@@ -11,28 +11,29 @@ export async function verify({ bundle: bundlePath, key: keyPath, xml }) {
   const bundle = await readBundle(bundlePath, xml);
 
   // Extract the embedded JWS signature 
-  const signatureJWS = base64ToBase64Url(getSignatureData(bundle));
+  const signatureData = getSignatureData(bundle);
+  const jwsCompact = fromBase64(signatureData);
 
   // Load the public key
   const publicKey = await loadPublicKey(keyPath);
 
   // Canonicalize the bundle without the signature
-  const canonicalRaw = canonicalize({ ...bundle, signature: undefined });
-  const canonical = JSON.stringify(JSON.parse(canonicalRaw), null, 2);
+  const canonical = canonicalize({ ...bundle, signature: undefined });
+  const payload = JSON.parse(canonical);
 
-  let payload;
+  let isValid = false;
+
+  // Verify
   try {
-    const result = await jwtVerify(signatureJWS, publicKey);
-    payload = JSON.stringify(result.payload, null, 2);
+    const { payload: verifiedPayload } = await jwtVerify(jwsCompact, publicKey);
+    isValid = JSON.stringify(verifiedPayload) === JSON.stringify(payload);
   } catch (err) {
-    console.error("Signature structure is valid, but verification FAILED.");
-    console.error("Reason:", err.message);
-    return;
+    console.error('Signature verification error:', err.message);
   }
 
-  const isValid = payload === canonical;
-  console.log("Signature valid:", isValid);
+  console.log('Signature valid:', isValid);
 
+  // show the differences if the signature is not valid
   if (!isValid) {
     console.log("Changed lines:");
     const diffs = diffLines(payload, canonical);
