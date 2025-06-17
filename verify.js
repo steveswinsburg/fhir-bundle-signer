@@ -3,40 +3,63 @@ import { loadPublicKey } from './utils/keys.js';
 import { canonicalize } from './utils/canonical.js';
 import { getSignatureData } from './utils/signature.js';
 import { fromBase64 } from './utils/encoding.js';
-import { jwtVerify } from 'jose';
+import { compactVerify } from 'jose';
 import { diffLines } from 'diff';
 
+
 export async function verify({ bundle: bundlePath, key: keyPath, xml }) {
-  // Load the bundle
+  
+  // Step 1: Load and canonicalize the bundle
   const bundle = await readBundle(bundlePath, xml);
-
-  // Extract the embedded JWS signature 
-  const signatureData = getSignatureData(bundle);
-  const jwsCompact = fromBase64(signatureData);
-
-  // Load the public key
-  const publicKey = await loadPublicKey(keyPath);
-
-  // Canonicalize the bundle without the signature
   const canonical = canonicalize({ ...bundle, signature: undefined });
-  const payload = JSON.parse(canonical);
+  const payloadBuffer = Buffer.from(canonical, 'utf8');
+
+  // Step 2: Extract the embedded JWS signature 
+  const rawSignature = getSignatureData(bundle);
+  const detachedJws = fromBase64(rawSignature);
+
+  // To verify a detached JWS we need to reinject the payload.
+  // Step 3: Split the JWS into header..signature
+  const parts = detachedJws.split('.');
+  if (parts.length !== 3 || parts[1] !== '') {
+    console.error('Invalid detached JWS format');
+    console.log('JWS parts:', parts);
+    return;
+  }
+
+  // Step 4: Reattach the canonical payload to create a valid JWS
+  const payloadBase64url = payloadBuffer.toString('base64url'); // must use base64url encoding
+  const reattachedJws = `${parts[0]}.${payloadBase64url}.${parts[2]}`;
+
+  // Step 5: Load public key for verification
+  const publicKey = await loadPublicKey(keyPath);
 
   let isValid = false;
 
-  // Verify
+  // Step 6: Verify
   try {
-    const { payload: verifiedPayload } = await jwtVerify(jwsCompact, publicKey);
-    isValid = JSON.stringify(verifiedPayload) === JSON.stringify(payload);
+     const { payload: verifiedPayload } = await compactVerify(reattachedJws, publicKey);
+      isValid = Buffer.compare(verifiedPayload, payloadBuffer) === 0;
   } catch (err) {
     console.error('Signature verification error:', err.message);
   }
 
   console.log('Signature valid:', isValid);
 
-  // show the differences if the signature is not valid
+  // Step 7: Show the differences if the signature is not valid
   if (!isValid) {
     console.log("Changed lines:");
-    const diffs = diffLines(payload, canonical);
+
+    // Decode the payload from the JWS for comparison
+    let verifiedPayload;
+    try {
+      const { payload } = await compactVerify(detachedJws, publicKey, { detached: payloadBuffer });
+      verifiedPayload = payload.toString('utf8');
+    } catch {
+      verifiedPayload = ''; // fallback if parsing fails again
+    }
+
+    const diffs = diffLines(verifiedPayload, canonical);
 
     for (const part of diffs) {
       if (part.added) {

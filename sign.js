@@ -1,13 +1,14 @@
 import { readBundle, writeBundle, updateSignature } from './utils/bundle.js';
 import { loadPrivateKey, saveKeyPair } from './utils/keys.js';
 import { canonicalize } from './utils/canonical.js';
-import { SignJWT, generateKeyPair } from 'jose';
+import { CompactSign, generateKeyPair } from 'jose';
 import { toBase64 } from './utils/encoding.js';
 
 export async function sign({ bundle: bundlePath, key: keyPath, out: outPath, xml }) {
   // Step 1: Load and canonicalize the bundle
   const bundle = await readBundle(bundlePath, xml);
   const canonical = canonicalize({ ...bundle, signature: undefined });
+  const payloadBuffer = Buffer.from(canonical, 'utf8');
 
   // Step 2: Load or generate private key
   let privateKey;
@@ -22,15 +23,19 @@ export async function sign({ bundle: bundlePath, key: keyPath, out: outPath, xml
   }
 
   // Step 3: Sign using JWS (RS256)
-  const jwsCompact = await new SignJWT(JSON.parse(canonical))
-    .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+  const jws = await new CompactSign(payloadBuffer)
+    .setProtectedHeader({ alg: 'RS256' })
     .sign(privateKey);
 
-  const signatureData = toBase64(jwsCompact);
+  const [header, , signature] = jws.split('.');
+  const detachedJws = `${header}.${''}.${signature}`; // note empty payload
+
+  // FHIR requires base64 (not base64url) encoded JWS string
+  const fhirSafeJWS = toBase64(detachedJws);
 
   // Step 4: Embed signature in the bundle
   updateSignature(bundle, {
-    signature: signatureData,
+    signature: fhirSafeJWS,
     targetFormat: xml ? 'application/fhir+xml' : 'application/fhir+json',
     sigFormat: 'application/jose',
     whoRef: 'Practitioner/123'
